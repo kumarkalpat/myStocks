@@ -1,0 +1,5 @@
+{
+  "name": "My  Stock Portfolio Analyst",
+  "description": "An AI-powered application to manage your stock portfolio, get market trends, news, and AI-driven buy/sell alerts and recommendations.",
+  "requestFramePermissions": []
+}
