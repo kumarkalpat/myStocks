@@ -2,9 +2,24 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Holding, StockAnalysis, StockNews, StockRecommendation } from '../types';
 import { ApiStatusType } from "../components/ApiStatus";
 
-// The API key is expected to be set in the environment variables.
-// The new UI in the Header will provide feedback on its status.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Use a singleton pattern to lazy-initialize the client.
+// This avoids the constructor throwing an error on module load when API_KEY is not present.
+let ai: GoogleGenAI | null = null;
+
+const getGenAIClient = (): GoogleGenAI => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        // This error will be caught by the calling functions and translated
+        // into a user-friendly message.
+        throw new Error("Gemini API key not configured. The API_KEY environment variable is missing.");
+    }
+
+    if (!ai) {
+        ai = new GoogleGenAI({ apiKey });
+    }
+    return ai;
+};
+
 
 const formatPortfolioForPrompt = (portfolio: Holding[]): string => {
   if (portfolio.length === 0) return "The user has an empty portfolio.";
@@ -33,9 +48,12 @@ export const validateGeminiApiKey = async (): Promise<ApiStatusType> => {
         return 'missing';
     }
     try {
+        // Get the client, which will be initialized on first call.
+        const client = getGenAIClient();
+        
         // Perform a lightweight, non-streaming call to check the key.
         // A simple prompt is enough to validate authentication.
-        await ai.models.generateContent({
+        await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: "test",
             config: {
@@ -53,9 +71,7 @@ export const validateGeminiApiKey = async (): Promise<ApiStatusType> => {
 
 export const getStockAnalysis = async (ticker: string, portfolio: Holding[]): Promise<StockAnalysis> => {
   try {
-    if (!process.env.API_KEY) {
-      throw new Error("Gemini API key not configured. The API_KEY environment variable is missing.");
-    }
+    const client = getGenAIClient();
     const prompt = `
       Analyze the stock with ticker symbol "${ticker}". 
       Consider its recent performance, market sentiment, and its position relative to the user's current portfolio.
@@ -63,7 +79,7 @@ export const getStockAnalysis = async (ticker: string, portfolio: Holding[]): Pr
       Provide a buy, sell, or hold signal, a confidence score (0-1), a potential price target, and a brief reasoning.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
@@ -92,12 +108,10 @@ export const getStockAnalysis = async (ticker: string, portfolio: Holding[]): Pr
 
 export const getStockNews = async (ticker: string): Promise<StockNews> => {
   try {
-    if (!process.env.API_KEY) {
-      throw new Error("Gemini API key not configured. The API_KEY environment variable is missing.");
-    }
+    const client = getGenAIClient();
     const prompt = `Summarize the latest news for the company with stock ticker "${ticker}". Provide a concise summary of the top 3-5 recent developments based on search results.`;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
@@ -132,16 +146,14 @@ export const getStockNews = async (ticker: string): Promise<StockNews> => {
 
 export const getRecommendations = async (portfolio: Holding[]): Promise<StockRecommendation[]> => {
   try {
-    if (!process.env.API_KEY) {
-      throw new Error("Gemini API key not configured. The API_KEY environment variable is missing.");
-    }
+    const client = getGenAIClient();
     const prompt = `
       Based on the user's current portfolio, recommend 3 new stocks to consider buying for diversification and growth.
       ${formatPortfolioForPrompt(portfolio)}
       For each recommendation, provide the ticker, company name, and a strong, concise reason why it's a good fit for this specific portfolio.
     `;
     
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
