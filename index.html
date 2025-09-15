@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -6,6 +5,13 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gemini Stock Portfolio Analyst</title>
+    <script>
+      // Polyfill process.env for browser environments to prevent crashes.
+      // Vercel and other platforms require a build step to inject env vars
+      // into a static frontend. This polyfill allows the app to load,
+      // and the app's own UI will indicate that the API keys are missing.
+      window.process = window.process || { env: {} };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
