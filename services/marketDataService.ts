@@ -1,13 +1,13 @@
 import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
 import { ApiStatusType } from '../components/ApiStatus';
+import { getFinnhubApiKey } from './configService';
 
-const API_KEY = process.env.FINNHUB_API_KEY;
 const BASE_URL = 'https://finnhub.io/api/v1';
 
 const handleApiError = (response: Response, ticker: string): Error => {
     if (response.status === 401) {
-        return new Error("The Finnhub API key is invalid. Although the FINNHUB_API_KEY environment variable is set, the API rejected the key. Please double-check the value you have provided.");
+        return new Error("The Finnhub API key is invalid. The API rejected the key. Please double-check the value in the configuration screen.");
     }
      if (response.status === 429) {
         return new Error("Finnhub API rate limit exceeded. Please wait and try again later.");
@@ -16,20 +16,18 @@ const handleApiError = (response: Response, ticker: string): Error => {
 }
 
 export const validateFinnhubApiKey = async (): Promise<ApiStatusType> => {
-    if (!API_KEY) {
+    const apiKey = getFinnhubApiKey();
+    if (!apiKey) {
         return 'missing';
     }
     try {
         // Use a common, stable ticker like AAPL for a lightweight check.
-        const url = `${BASE_URL}/quote?symbol=AAPL&token=${API_KEY}`;
+        const url = `${BASE_URL}/quote?symbol=AAPL&token=${apiKey}`;
         const response = await fetch(url);
         if (response.status === 401) {
             return 'invalid';
         }
         if (!response.ok) {
-            // Throw for other server errors (5xx, etc.) which might indicate an API issue
-            // but not necessarily an invalid key. For simplicity, we'll treat persistent
-            // non-401 errors as an invalid state for the user.
             console.error(`Finnhub validation failed with status: ${response.status}`);
             return 'invalid';
         }
@@ -41,11 +39,12 @@ export const validateFinnhubApiKey = async (): Promise<ApiStatusType> => {
 };
 
 export const getQuote = async (ticker: string): Promise<StockQuote> => {
-    if (!API_KEY) {
-        throw new Error("Finnhub API key not configured. The FINNHUB_API_KEY environment variable is missing.");
+    const apiKey = getFinnhubApiKey();
+    if (!apiKey) {
+        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
     }
     try {
-        const url = `${BASE_URL}/quote?symbol=${ticker}&token=${API_KEY}`;
+        const url = `${BASE_URL}/quote?symbol=${ticker}&token=${apiKey}`;
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -70,11 +69,12 @@ export const getQuote = async (ticker: string): Promise<StockQuote> => {
 };
 
 export const getCompanyProfile = async (ticker: string): Promise<{ name: string }> => {
-    if (!API_KEY) {
-        throw new Error("Finnhub API key not configured. The FINNHUB_API_KEY environment variable is missing.");
+    const apiKey = getFinnhubApiKey();
+    if (!apiKey) {
+        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
     }
     try {
-        const url = `${BASE_URL}/stock/profile2?symbol=${ticker}&token=${API_KEY}`;
+        const url = `${BASE_URL}/stock/profile2?symbol=${ticker}&token=${apiKey}`;
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -118,8 +118,9 @@ const transformData = (apiData: any): ChartDataPoint[] => {
 
 
 export const getHistoricalData = async (ticker: string, range: ChartRange): Promise<ChartDataPoint[]> => {
-    if (!API_KEY) {
-        throw new Error("Finnhub API key not configured. The FINNHUB_API_KEY environment variable is missing.");
+    const apiKey = getFinnhubApiKey();
+    if (!apiKey) {
+        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
     }
     
     try {
@@ -147,7 +148,7 @@ export const getHistoricalData = async (ticker: string, range: ChartRange): Prom
                 break;
         }
         
-        const url = `${BASE_URL}/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${API_KEY}`;
+        const url = `${BASE_URL}/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${apiKey}`;
         
         const response = await fetch(url);
 

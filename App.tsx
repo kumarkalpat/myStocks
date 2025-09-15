@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import { getCompanyProfile, getQuote, validateFinnhubApiKey } from './services/marketDataService';
 import { validateGeminiApiKey } from './services/geminiService';
 import { ApiStatusType } from './components/ApiStatus';
+import ApiConfiguration from './components/ApiConfiguration';
 
 const getInitialPortfolio = (): Holding[] => {
   try {
@@ -38,12 +39,14 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [geminiApiStatus, setGeminiApiStatus] = useState<ApiStatusType>('checking');
   const [finnhubApiStatus, setFinnhubApiStatus] = useState<ApiStatusType>('checking');
+  const [keysChecked, setKeysChecked] = useState<boolean>(false);
 
   // Validate API Keys on initial load
   useEffect(() => {
     const checkApiKeys = async () => {
         setGeminiApiStatus(await validateGeminiApiKey());
         setFinnhubApiStatus(await validateFinnhubApiKey());
+        setKeysChecked(true);
     };
     checkApiKeys();
   }, []);
@@ -82,7 +85,9 @@ const App: React.FC = () => {
         setIsMarketDataLoading(false);
       }
     };
-    fetchMarketData();
+    if (finnhubApiStatus === 'valid') {
+        fetchMarketData();
+    }
   }, [portfolio, finnhubApiStatus]);
 
   const { portfolioCost, portfolioCurrentValue, netGain, netGainPercent } = useMemo(() => {
@@ -154,6 +159,19 @@ const App: React.FC = () => {
         return newPortfolio;
     });
   };
+
+  if (!keysChecked) {
+      // Render a loader while keys are being validated for the first time
+      return (
+          <div className="flex items-center justify-center min-h-screen bg-brand-primary">
+              <div className="w-12 h-12 border-4 border-brand-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+      );
+  }
+
+  if (geminiApiStatus === 'missing' || finnhubApiStatus === 'missing') {
+      return <ApiConfiguration />;
+  }
 
   return (
     <div className="min-h-screen bg-brand-primary font-sans">

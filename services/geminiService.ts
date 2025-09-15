@@ -1,21 +1,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Holding, StockAnalysis, StockNews, StockRecommendation } from '../types';
 import { ApiStatusType } from "../components/ApiStatus";
+import { getGeminiApiKey } from "./configService";
 
 // Use a singleton pattern to lazy-initialize the client.
 // This avoids the constructor throwing an error on module load when API_KEY is not present.
 let ai: GoogleGenAI | null = null;
+let lastUsedApiKey: string | null = null;
 
 const getGenAIClient = (): GoogleGenAI => {
-    const apiKey = process.env.API_KEY;
+    const apiKey = getGeminiApiKey();
     if (!apiKey) {
         // This error will be caught by the calling functions and translated
         // into a user-friendly message.
-        throw new Error("Gemini API key not configured. The API_KEY environment variable is missing.");
+        throw new Error("Gemini API key not configured. Please add it in the configuration screen.");
     }
 
-    if (!ai) {
+    // Re-initialize if the key has changed
+    if (!ai || lastUsedApiKey !== apiKey) {
         ai = new GoogleGenAI({ apiKey });
+        lastUsedApiKey = apiKey;
     }
     return ai;
 };
@@ -38,21 +42,19 @@ const formatPortfolioForPrompt = (portfolio: Holding[]): string => {
 const handleApiError = (error: unknown, context: string): Error => {
     console.error(`Error fetching ${context}:`, error);
     if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400'))) {
-        return new Error("The Gemini API key is invalid. Although the API_KEY environment variable may be set, the API rejected the key. Please verify the key is correct and has the necessary permissions in your Google AI Studio project.");
+        return new Error("The Gemini API key is invalid. The API rejected the key. Please verify the key is correct in the configuration screen.");
     }
     return new Error(`Failed to get ${context} from Gemini API.`);
 };
 
 export const validateGeminiApiKey = async (): Promise<ApiStatusType> => {
-    if (!process.env.API_KEY) {
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
         return 'missing';
     }
     try {
-        // Get the client, which will be initialized on first call.
         const client = getGenAIClient();
         
-        // Perform a lightweight, non-streaming call to check the key.
-        // A simple prompt is enough to validate authentication.
         await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: "test",
