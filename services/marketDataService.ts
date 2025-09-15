@@ -9,6 +9,9 @@ const handleApiError = (response: Response, ticker: string): Error => {
     if (response.status === 401) {
         return new Error("The Finnhub API key is invalid. The API rejected the key. Please double-check the value in the configuration screen.");
     }
+    if (response.status === 403) {
+        return new Error(`API request for ${ticker} was forbidden (403). This often means your Finnhub plan does not grant access to this data (e.g., historical chart data can be a premium feature). Please check your Finnhub subscription and API key permissions.`);
+    }
      if (response.status === 429) {
         return new Error("Finnhub API rate limit exceeded. Please wait and try again later.");
     }
