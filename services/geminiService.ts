@@ -1,9 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Holding, StockAnalysis, StockNews, StockRecommendation, StockFundamentals } from '../types';
 
-// Correctly access the environment variable.
+// FIX: Use process.env.API_KEY as per the coding guidelines, which resolves the error.
 const getGenAIClient = (): GoogleGenAI => {
-    // FIX: Use process.env.API_KEY as per the guidelines. This resolves the TypeScript error.
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
         throw new Error("API Key not found. Please set the `API_KEY` environment variable.");
@@ -29,7 +28,7 @@ const handleApiError = (error: unknown, context: string): Error => {
     console.error(`Error fetching ${context}:`, error);
     if (error instanceof Error) {
         if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
-             // FIX: Update error message to refer to API_KEY instead of VITE_API_KEY.
+             // FIX: Updated error message to reference the correct environment variable.
              return new Error("The Gemini API key is invalid or missing. Please ensure your API_KEY environment variable is set correctly.");
         }
     }
