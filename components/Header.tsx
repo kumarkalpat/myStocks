@@ -1,12 +1,7 @@
 import React from 'react';
 import { ChartBarIcon } from './icons/ChartBarIcon';
-import ApiStatus, { ApiStatusType } from './ApiStatus';
 
-interface HeaderProps {
-  apiKeyStatus: ApiStatusType;
-}
-
-const Header: React.FC<HeaderProps> = ({ apiKeyStatus }) => {
+const Header: React.FC = () => {
   return (
     <header className="bg-brand-secondary/50 backdrop-blur-sm border-b border-brand-border sticky top-0 z-10">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -16,9 +11,6 @@ const Header: React.FC<HeaderProps> = ({ apiKeyStatus }) => {
             <h1 className="text-xl font-bold text-brand-text">
               Stock Portfolio Analyst
             </h1>
-          </div>
-           <div className="flex items-center space-x-4">
-            <ApiStatus serviceName="Gemini" status={apiKeyStatus} />
           </div>
         </div>
       </div>
