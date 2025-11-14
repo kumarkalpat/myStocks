@@ -23,7 +23,6 @@ const ErrorDisplay: React.FC<{ message: string }> = ({ message }) => (
     <div className="bg-brand-danger/10 border border-brand-danger/30 rounded-lg p-4 text-center">
       <h3 className="font-bold text-brand-danger mb-2">Analysis Failed</h3>
       <p className="text-brand-subtle text-sm">{message}</p>
-      <p className="text-brand-subtle text-sm mt-1">Please ensure your VITE_API_KEY environment variable is set correctly.</p>
     </div>
 );
 

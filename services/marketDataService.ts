@@ -3,21 +3,19 @@ import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
 
 // --- Gemini Client Setup ---
-// FIX: Use process.env.API_KEY as per the coding guidelines, which resolves the error.
+// FIX: Updated to use process.env.API_KEY as per coding guidelines. This resolves the TypeScript error.
 const getGenAIClient = (): GoogleGenAI => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("API Key not found. Please set the `API_KEY` environment variable.");
-    }
-    return new GoogleGenAI({ apiKey });
+    // The API key is sourced from the environment variable `process.env.API_KEY`.
+    // It is assumed to be pre-configured and available in the execution context.
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
+// FIX: Updated error message to reflect use of environment variables for the API key.
 const handleApiError = (error: unknown, context: string, ticker: string): Error => {
     console.error(`Error fetching ${context} for ${ticker}:`, error);
     if (error instanceof Error) {
         if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
-            // FIX: Updated error message to reference the correct environment variable.
-            return new Error("The Gemini API key is invalid or missing. Please ensure your API_KEY environment variable is set correctly.");
+            return new Error("The Gemini API key is invalid or missing. Please ensure it is configured correctly in the environment variables.");
         }
         if (error.message.toLowerCase().includes('json')) {
             return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
