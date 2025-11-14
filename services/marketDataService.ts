@@ -1,31 +1,29 @@
-import { GoogleGenAI } from "@google/genai";
 import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
 
-// --- Gemini Client Setup ---
-// FIX: Updated to use process.env.API_KEY as per coding guidelines. This resolves the TypeScript error.
-const getGenAIClient = (): GoogleGenAI => {
-    // The API key is sourced from the environment variable `process.env.API_KEY`.
-    // It is assumed to be pre-configured and available in the execution context.
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
-};
+// --- API Keys ---
+// Sourced from environment variables, assumed to be pre-configured.
+const GEMINI_API_KEY = process.env.API_KEY;
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
-// FIX: Updated error message to reflect use of environment variables for the API key.
+// --- Error Handling ---
 const handleApiError = (error: unknown, context: string, ticker: string): Error => {
     console.error(`Error fetching ${context} for ${ticker}:`, error);
     if (error instanceof Error) {
         if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
-            return new Error("The Gemini API key is invalid or missing. Please ensure it is configured correctly in the environment variables.");
+            return new Error(`An API key is invalid or missing. Please ensure both GEMINI_API_KEY and ALPHA_VANTAGE_API_KEY are configured correctly in the environment variables.`);
         }
-        if (error.message.toLowerCase().includes('json')) {
-            return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
+        if (error.message.toLowerCase().includes('json') || error.message.toLowerCase().includes('unexpected token')) {
+            return new Error(`Received an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
+        }
+         if (error.message.includes('limit')) {
+            return new Error(`API limit reached for ${context}. Please try again later.`);
         }
     }
-    return new Error(`Failed to get ${context} for ${ticker} from Gemini API.`);
+    return new Error(`Failed to get ${context} for ${ticker}.`);
 };
 
-// --- Helper to clean and parse Gemini's response ---
-
+// --- Helper to clean and parse Gemini's JSON response ---
 const cleanAndParseJson = (text: string): any => {
     let jsonText = text.trim();
     if (jsonText.startsWith('```json')) {
@@ -36,44 +34,43 @@ const cleanAndParseJson = (text: string): any => {
     return JSON.parse(jsonText);
 }
 
-
-// --- New Data Fetching Functions using Gemini ---
+// --- Data Fetching Functions ---
 
 export const getQuote = async (ticker: string): Promise<StockQuote> => {
+    if (!ALPHA_VANTAGE_API_KEY) {
+        throw new Error("Alpha Vantage API key is not configured.");
+    }
+    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
     try {
-        const client = getGenAIClient();
-        const prompt = `Using Google Search, get the latest stock quote for ticker symbol "${ticker}".
-        Return ONLY a valid JSON object with the following keys and number values:
-        - "currentPrice": The latest trading price.
-        - "change": The change in price for the day (e.g., -1.25).
-        - "percentChange": The percentage change for the day (e.g., -0.5).
-        - "previousClose": The previous trading day's closing price.
-        Do not include any other text or markdown formatting.`;
-        
-        const response = await client.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
-        });
-        
-        const data = cleanAndParseJson(response.text);
-        
-        if (typeof data.currentPrice !== 'number') {
-            throw new Error(`Invalid data format received for ${ticker}.`);
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data['Note'] || !data['Global Quote'] || Object.keys(data['Global Quote']).length === 0) {
+            throw new Error(data['Note'] || `No quote data found for ${ticker}. It may be an invalid symbol.`);
         }
 
-        return data as StockQuote;
-
+        const quoteData = data['Global Quote'];
+        return {
+            currentPrice: parseFloat(quoteData['05. price']),
+            change: parseFloat(quoteData['09. change']),
+            percentChange: parseFloat(quoteData['10. change percent'].replace('%', '')),
+            previousClose: parseFloat(quoteData['08. previous close']),
+        };
     } catch (error) {
         throw handleApiError(error, "quote", ticker);
     }
 };
 
+// This function remains with Gemini as it's a flexible text-based query.
 export const getCompanyProfile = async (ticker: string): Promise<{ name: string }> => {
+    if (!GEMINI_API_KEY) {
+        throw new Error("Gemini API key is not configured.");
+    }
+    const { GoogleGenAI } = await import('@google/genai');
+    const client = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    
     try {
-        const client = getGenAIClient();
         const prompt = `Using Google Search, what is the full company name for the stock ticker symbol "${ticker}"?
         Return ONLY a valid JSON object with a single key "name" and the company name as its string value.
         Do not include any other text or markdown formatting.`;
@@ -99,63 +96,70 @@ export const getCompanyProfile = async (ticker: string): Promise<{ name: string 
     }
 };
 
-const transformAndSortData = (apiData: {date: string, price: number}[]): ChartDataPoint[] => {
-    if (!apiData || apiData.length === 0) {
+const transformAndSortData = (apiData: Record<string, any>, key: '5. adjusted close' | '4. close'): ChartDataPoint[] => {
+    if (!apiData || Object.keys(apiData).length === 0) {
         return [];
     }
 
-    const chartPoints: ChartDataPoint[] = apiData
-        .map(point => {
-            // The date from Gemini might not have a time, so specify UTC to avoid timezone issues.
-            const d = new Date(`${point.date}T00:00:00Z`);
+    return Object.entries(apiData)
+        .map(([dateStr, values]) => {
+            const d = new Date(`${dateStr}T00:00:00Z`);
             return {
                 date: d.toISOString(),
                 shortDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-                price: point.price,
+                price: parseFloat(values[key]),
             };
         })
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ensure data is chronological
-
-    return chartPoints;
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
+
 export const getHistoricalData = async (ticker: string, range: ChartRange): Promise<ChartDataPoint[]> => {
+    if (!ALPHA_VANTAGE_API_KEY) {
+        throw new Error("Alpha Vantage API key is not configured.");
+    }
+
+    let apiFunction: string;
+    let dataKey: string;
+    let priceKey: '5. adjusted close' | '4. close';
+
+    switch (range) {
+        case '5Y':
+            apiFunction = 'TIME_SERIES_WEEKLY_ADJUSTED';
+            dataKey = 'Weekly Adjusted Time Series';
+            priceKey = '5. adjusted close';
+            break;
+        case '1Y':
+        case 'YTD':
+        default:
+            apiFunction = 'TIME_SERIES_DAILY_ADJUSTED';
+            dataKey = 'Time Series (Daily)';
+            priceKey = '5. adjusted close';
+            break;
+    }
+    
+    const url = `https://www.alphavantage.co/query?function=${apiFunction}&symbol=${ticker}&outputsize=full&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
     try {
-        const client = getGenAIClient();
+        const response = await fetch(url);
+        const data = await response.json();
         
-        let rangeDescription = '';
-        let frequency = 'daily';
-        switch (range) {
-            case '5Y':
-                rangeDescription = 'the last 5 years';
-                frequency = 'weekly';
-                break;
-            case '1Y':
-                rangeDescription = 'the last 1 year';
-                break;
-            case 'YTD':
-                rangeDescription = 'this year to date';
-                break;
+        if (data['Note'] || !data[dataKey]) {
+            throw new Error(data['Note'] || `No historical data found for ${ticker}.`);
         }
 
-        const prompt = `
-            Using Google Search, provide historical closing prices for the stock with ticker symbol "${ticker}" for ${rangeDescription}.
-            The data should be ${frequency}.
-            Return ONLY a valid JSON array of objects, where each object contains a 'date' (in YYYY-MM-DD format) and the 'price' (closing price as a number).
-            Ensure the data is sorted chronologically from oldest to newest.
-            Do not include any other text or markdown formatting.
-        `;
+        let transformedData = transformAndSortData(data[dataKey], priceKey);
 
-        const response = await client.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
-        });
-
-        const data = cleanAndParseJson(response.text);
-        return transformAndSortData(data);
+        if (range === '1Y') {
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+            transformedData = transformedData.filter(dp => new Date(dp.date) >= oneYearAgo);
+        } else if (range === 'YTD') {
+            const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+            transformedData = transformedData.filter(dp => new Date(dp.date) >= startOfYear);
+        }
+        
+        return transformedData;
 
     } catch (error) {
         throw handleApiError(error, "historical data", ticker);
