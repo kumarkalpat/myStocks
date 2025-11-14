@@ -1,24 +1,24 @@
 import { GoogleGenAI } from "@google/genai";
 import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
-import { getGeminiApiKey } from './configService';
 
 // --- Gemini Client Setup ---
-
+// FIX: Per coding guidelines, VITE_API_KEY from import.meta.env is not allowed. The API key must be read from `process.env.API_KEY`.
+// This also resolves the TypeScript error for `import.meta.env`.
 const getGenAIClient = (): GoogleGenAI => {
-    // Prioritize environment variable, fall back to localStorage.
-    const apiKey = process.env.API_KEY || getGeminiApiKey();
-    if (!apiKey) {
-        throw new Error("API Key not found. Please configure it.");
+    // FIX: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+    if (!process.env.API_KEY) {
+        throw new Error("API Key not found. Please configure the `API_KEY` environment variable.");
     }
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 const handleApiError = (error: unknown, context: string, ticker: string): Error => {
     console.error(`Error fetching ${context} for ${ticker}:`, error);
     if (error instanceof Error) {
         if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
-            return new Error("The Gemini API key is invalid or missing. If you've set it in the environment, please verify it. Otherwise, please re-configure it through the app.");
+            // FIX: Updated error message to align with API key handling guidelines.
+            return new Error("The Gemini API key is invalid or missing. Please ensure your API_KEY environment variable is set correctly.");
         }
         if (error.message.toLowerCase().includes('json')) {
             return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);

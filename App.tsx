@@ -4,11 +4,8 @@ import PortfolioManager from './components/PortfolioManager';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import ApiConfiguration from './components/ApiConfiguration';
 import { ApiStatusType } from './components/ApiStatus';
 import { getCompanyProfile, getQuote } from './services/marketDataService';
-import { getGeminiApiKey } from './services/configService';
-import { validateGeminiApiKey } from './services/geminiService';
 
 const getInitialPortfolio = (): Holding[] => {
   try {
@@ -29,10 +26,9 @@ const getInitialPortfolio = (): Holding[] => {
 };
 
 const App: React.FC = () => {
-  const hasEnvKey = useMemo(() => !!process.env.API_KEY, []);
-  // If an env key exists, we assume it's valid. API calls will fail if it's not.
-  // Otherwise, we'll check the key from local storage.
-  const [apiKeyStatus, setApiKeyStatus] = useState<ApiStatusType>(hasEnvKey ? 'valid' : 'checking');
+  // FIX: Per coding guidelines, API key must come from `process.env.API_KEY` and should not be handled in the UI.
+  // The app should assume the key is present and valid. This also resolves the `import.meta.env` TypeScript error.
+  const [apiKeyStatus] = useState<ApiStatusType>('valid');
   
   const [portfolio, setPortfolio] = useState<Holding[]>(getInitialPortfolio);
   const [marketData, setMarketData] = useState<Record<string, StockQuote>>({});
@@ -43,23 +39,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Validate localStorage API Key if no environment key is present
-  useEffect(() => {
-    if (hasEnvKey) return;
-
-    const checkStoredApiKey = async () => {
-      const storedKey = getGeminiApiKey();
-      if (storedKey) {
-        setApiKeyStatus('checking');
-        const isValid = await validateGeminiApiKey(storedKey);
-        setApiKeyStatus(isValid ? 'valid' : 'missing'); // 'missing' will show config screen
-      } else {
-        setApiKeyStatus('missing');
-      }
-    };
-    checkStoredApiKey();
-  }, [hasEnvKey]);
-
+  // FIX: Removed logic for validating API key from local storage as it's against the guidelines.
 
   // Persist portfolio to localStorage on change
   useEffect(() => {
@@ -73,9 +53,8 @@ const App: React.FC = () => {
   // Fetch live market data for portfolio holdings
   useEffect(() => {
     const fetchMarketData = async () => {
-      // Only fetch if API key is considered valid
-      if (!(hasEnvKey || apiKeyStatus === 'valid')) return;
-
+      // FIX: Removed check for API key status. The app should always attempt to fetch data,
+      // and the service will throw an error if the key is missing.
       if (portfolio.length === 0) {
         setMarketData({});
         setIsMarketDataLoading(false);
@@ -100,7 +79,7 @@ const App: React.FC = () => {
     };
     
     fetchMarketData();
-  }, [portfolio, hasEnvKey, apiKeyStatus]);
+  }, [portfolio]);
 
   const { portfolioCost, portfolioCurrentValue, netGain, netGainPercent } = useMemo(() => {
     const cost = portfolio.reduce((acc, holding) => {
@@ -172,23 +151,7 @@ const App: React.FC = () => {
     });
   };
 
-  const showApp = hasEnvKey || apiKeyStatus === 'valid';
-
-  if (!showApp) {
-    if (apiKeyStatus === 'checking') {
-      return (
-        <div className="flex items-center justify-center min-h-screen bg-brand-primary text-brand-text">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-brand-accent border-t-transparent rounded-full animate-spin"></div>
-            <p>Verifying API Key...</p>
-          </div>
-        </div>
-      );
-    }
-    // 'missing' or an invalid key from storage leads to the config screen.
-    // The component will handle saving the key and reloading the page.
-    return <ApiConfiguration />;
-  }
+  // FIX: Removed conditional rendering based on API key status. The app should always render.
 
   return (
     <div className="min-h-screen bg-brand-primary font-sans">
