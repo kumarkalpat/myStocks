@@ -3,16 +3,15 @@ import { saveApiKeys } from '../services/configService';
 
 const ApiConfiguration: React.FC = () => {
     const [geminiKey, setGeminiKey] = useState('');
-    const [finnhubKey, setFinnhubKey] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = () => {
-        if (!geminiKey.trim() || !finnhubKey.trim()) {
-            alert('Please provide both API keys.');
+        if (!geminiKey.trim()) {
+            alert('Please provide the Gemini API key.');
             return;
         }
         setIsSaving(true);
-        saveApiKeys(geminiKey, finnhubKey);
+        saveApiKeys(geminiKey);
         // Reload to apply keys and re-validate
         window.location.reload();
     };
@@ -23,8 +22,8 @@ const ApiConfiguration: React.FC = () => {
                 <div>
                     <h2 className="text-3xl font-bold text-center text-brand-text">API Key Configuration</h2>
                     <p className="mt-2 text-center text-sm text-brand-subtle">
-                        Your API keys are required to fetch market data and perform analysis.
-                        They are stored in your browser's local storage and never sent to any other server.
+                        Your Gemini API key is required to fetch market data and perform analysis.
+                        It is stored securely in your browser's local storage.
                     </p>
                 </div>
                 <div className="space-y-4">
@@ -42,20 +41,6 @@ const ApiConfiguration: React.FC = () => {
                         />
                          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-xs text-brand-accent hover:underline mt-1 inline-block">Get a Gemini API Key</a>
                     </div>
-                    <div>
-                        <label htmlFor="finnhub-key" className="block text-sm font-medium text-brand-subtle">
-                            Finnhub API Key
-                        </label>
-                        <input
-                            id="finnhub-key"
-                            type="password"
-                            value={finnhubKey}
-                            onChange={(e) => setFinnhubKey(e.target.value)}
-                            placeholder="Enter your Finnhub API Key"
-                            className="mt-1 block w-full bg-brand-primary border border-brand-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-accent"
-                        />
-                        <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer" className="text-xs text-brand-accent hover:underline mt-1 inline-block">Get a Finnhub API Key</a>
-                    </div>
                 </div>
                 <div>
                     <button
@@ -67,7 +52,7 @@ const ApiConfiguration: React.FC = () => {
                     </button>
                 </div>
                  <p className="text-xs text-center text-brand-subtle">
-                    This app requires client-side keys to run on static platforms like Vercel.
+                    This app uses a client-side key for seamless deployment on static platforms.
                 </p>
             </div>
         </div>

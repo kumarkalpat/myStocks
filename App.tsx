@@ -1,13 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Holding, StockAnalysis, StockNews, StockRecommendation, AnalysisType, NewHolding, StockQuote } from './types';
+import { Holding, StockAnalysis, StockNews, StockRecommendation, AnalysisType, NewHolding, StockQuote, StockFundamentals } from './types';
 import PortfolioManager from './components/PortfolioManager';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import { getCompanyProfile, getQuote, validateFinnhubApiKey } from './services/marketDataService';
-import { validateGeminiApiKey } from './services/geminiService';
-import { ApiStatusType } from './components/ApiStatus';
-import ApiConfiguration from './components/ApiConfiguration';
+import { getCompanyProfile, getQuote } from './services/marketDataService';
 
 const getInitialPortfolio = (): Holding[] => {
   try {
@@ -33,23 +30,10 @@ const App: React.FC = () => {
   const [marketData, setMarketData] = useState<Record<string, StockQuote>>({});
   const [isMarketDataLoading, setIsMarketDataLoading] = useState<boolean>(true);
   const [selectedTicker, setSelectedTicker] = useState<string>('GOOGL');
-  const [analysis, setAnalysis] = useState<StockAnalysis | StockNews | StockRecommendation[] | null>(null);
+  const [analysis, setAnalysis] = useState<StockAnalysis | StockNews | StockRecommendation[] | StockFundamentals | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [geminiApiStatus, setGeminiApiStatus] = useState<ApiStatusType>('checking');
-  const [finnhubApiStatus, setFinnhubApiStatus] = useState<ApiStatusType>('checking');
-  const [keysChecked, setKeysChecked] = useState<boolean>(false);
-
-  // Validate API Keys on initial load
-  useEffect(() => {
-    const checkApiKeys = async () => {
-        setGeminiApiStatus(await validateGeminiApiKey());
-        setFinnhubApiStatus(await validateFinnhubApiKey());
-        setKeysChecked(true);
-    };
-    checkApiKeys();
-  }, []);
 
   // Persist portfolio to localStorage on change
   useEffect(() => {
@@ -63,7 +47,7 @@ const App: React.FC = () => {
   // Fetch live market data for portfolio holdings
   useEffect(() => {
     const fetchMarketData = async () => {
-      if (portfolio.length === 0 || finnhubApiStatus !== 'valid') {
+      if (portfolio.length === 0) {
         setMarketData({});
         setIsMarketDataLoading(false);
         return;
@@ -85,10 +69,9 @@ const App: React.FC = () => {
         setIsMarketDataLoading(false);
       }
     };
-    if (finnhubApiStatus === 'valid') {
-        fetchMarketData();
-    }
-  }, [portfolio, finnhubApiStatus]);
+    
+    fetchMarketData();
+  }, [portfolio]);
 
   const { portfolioCost, portfolioCurrentValue, netGain, netGainPercent } = useMemo(() => {
     const cost = portfolio.reduce((acc, holding) => {
@@ -160,22 +143,9 @@ const App: React.FC = () => {
     });
   };
 
-  if (!keysChecked) {
-      // Render a loader while keys are being validated for the first time
-      return (
-          <div className="flex items-center justify-center min-h-screen bg-brand-primary">
-              <div className="w-12 h-12 border-4 border-brand-accent border-t-transparent rounded-full animate-spin"></div>
-          </div>
-      );
-  }
-
-  if (geminiApiStatus === 'missing' || finnhubApiStatus === 'missing') {
-      return <ApiConfiguration />;
-  }
-
   return (
     <div className="min-h-screen bg-brand-primary font-sans">
-      <Header geminiStatus={geminiApiStatus} finnhubStatus={finnhubApiStatus} />
+      <Header />
       <main className="container mx-auto p-4 md:p-6 lg:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           <div className="lg:col-span-1">

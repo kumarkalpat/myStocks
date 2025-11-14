@@ -39,10 +39,31 @@ export interface StockRecommendation {
   reason: string;
 }
 
+export interface StockFundamentals {
+  ticker: string;
+  summary: string;
+  profitability: {
+    eps: number | null;
+    netProfitMargin: number | null;
+    ebitdaMargin: number | null;
+  };
+  valuation: {
+    peRatio: number | null;
+    pegRatio: number | null;
+    pbRatio: number | null;
+  };
+  financialHealth: {
+    debtToEquityRatio: number | null;
+    currentRatio: number | null;
+  };
+}
+
+
 export enum AnalysisType {
   ANALYSIS = 'ANALYSIS',
   NEWS = 'NEWS',
-  RECOMMENDATIONS = 'RECOMMENDATIONS'
+  RECOMMENDATIONS = 'RECOMMENDATIONS',
+  FUNDAMENTALS = 'FUNDAMENTALS'
 }
 
 export interface ChartDataPoint {

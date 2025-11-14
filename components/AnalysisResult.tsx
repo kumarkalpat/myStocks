@@ -1,12 +1,12 @@
 import React from 'react';
-import { StockAnalysis, StockNews, StockRecommendation, AnalysisType } from '../types';
+import { StockAnalysis, StockNews, StockRecommendation, AnalysisType, StockFundamentals } from '../types';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { StarIcon } from './icons/StarIcon';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { TrendingDownIcon } from './icons/TrendingDownIcon';
 
 interface AnalysisResultProps {
-  analysis: StockAnalysis | StockNews | StockRecommendation[] | null;
+  analysis: StockAnalysis | StockNews | StockRecommendation[] | StockFundamentals | null;
   analysisType: AnalysisType | null;
   isLoading: boolean;
   error: string | null;
@@ -109,6 +109,55 @@ const RecommendationsContent: React.FC<{ recommendations: StockRecommendation[] 
     </div>
 );
 
+const KPI: React.FC<{ label: string; value: number | string | null; unit?: string }> = ({ label, value, unit }) => {
+    const displayValue = (val: number | string | null) => {
+        if (val === null || val === undefined) return <span className="text-brand-subtle">N/A</span>;
+        if (typeof val === 'number') {
+            return `${val.toFixed(2)}${unit || ''}`;
+        }
+        return `${val}${unit || ''}`;
+    }
+
+    return (
+        <div className="bg-brand-primary p-3 rounded-lg flex justify-between items-baseline">
+            <p className="text-sm text-brand-subtle">{label}</p>
+            <p className="text-lg font-bold text-brand-text">{displayValue(value)}</p>
+        </div>
+    );
+};
+
+const FundamentalsContent: React.FC<{ fundamentals: StockFundamentals }> = ({ fundamentals }) => (
+    <div className="space-y-6 animate-fade-in">
+        <div>
+            <h4 className="font-bold text-brand-text text-lg mb-2">Fundamental Summary</h4>
+            <p className="text-brand-subtle whitespace-pre-wrap">{fundamentals.summary}</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+                <h5 className="font-semibold text-brand-text border-b border-brand-border pb-1">Profitability</h5>
+                <KPI label="EPS (TTM)" value={fundamentals.profitability.eps} unit={fundamentals.profitability.eps ? '$' : ''} />
+                <KPI label="Net Profit Margin" value={fundamentals.profitability.netProfitMargin} unit="%" />
+                <KPI label="EBITDA Margin" value={fundamentals.profitability.ebitdaMargin} unit="%" />
+            </div>
+            <div className="space-y-3">
+                <h5 className="font-semibold text-brand-text border-b border-brand-border pb-1">Valuation</h5>
+                <KPI label="P/E Ratio" value={fundamentals.valuation.peRatio} />
+                <KPI label="PEG Ratio" value={fundamentals.valuation.pegRatio} />
+                <KPI label="P/B Ratio" value={fundamentals.valuation.pbRatio} />
+            </div>
+        </div>
+
+        <div>
+            <h5 className="font-semibold text-brand-text border-b border-brand-border pb-1 mb-3">Financial Health</h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <KPI label="Debt-to-Equity" value={fundamentals.financialHealth.debtToEquityRatio} />
+                <KPI label="Current Ratio" value={fundamentals.financialHealth.currentRatio} />
+            </div>
+        </div>
+    </div>
+);
+
 
 const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, analysisType, isLoading, error }) => {
   if (isLoading) return <LoadingSpinner />;
@@ -124,6 +173,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, analysisType,
       {analysisType === AnalysisType.ANALYSIS && <AnalysisContent analysis={analysis as StockAnalysis} />}
       {analysisType === AnalysisType.NEWS && <NewsContent news={analysis as StockNews} />}
       {analysisType === AnalysisType.RECOMMENDATIONS && <RecommendationsContent recommendations={analysis as StockRecommendation[]} />}
+      {analysisType === AnalysisType.FUNDAMENTALS && <FundamentalsContent fundamentals={analysis as StockFundamentals} />}
     </div>
   );
 };

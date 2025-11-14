@@ -1,169 +1,164 @@
+import { GoogleGenAI } from "@google/genai";
 import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
-import { ApiStatusType } from '../components/ApiStatus';
-import { getFinnhubApiKey } from './configService';
 
-const BASE_URL = 'https://finnhub.io/api/v1';
+// --- Gemini Client Setup ---
 
-const handleApiError = (response: Response, ticker: string): Error => {
-    if (response.status === 401) {
-        return new Error("The Finnhub API key is invalid. The API rejected the key. Please double-check the value in the configuration screen.");
-    }
-    if (response.status === 403) {
-        return new Error(`API request for ${ticker} was forbidden (403). This often means your Finnhub plan does not grant access to this data (e.g., historical chart data can be a premium feature). Please check your Finnhub subscription and API key permissions.`);
-    }
-     if (response.status === 429) {
-        return new Error("Finnhub API rate limit exceeded. Please wait and try again later.");
-    }
-    return new Error(`API request for ${ticker} failed with status ${response.status}.`);
-}
+let ai: GoogleGenAI | null = null;
 
-export const validateFinnhubApiKey = async (): Promise<ApiStatusType> => {
-    const apiKey = getFinnhubApiKey();
-    if (!apiKey) {
-        return 'missing';
+const getGenAIClient = (): GoogleGenAI => {
+    if (!ai) {
+        // The API key must be injected by the environment.
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     }
-    try {
-        // Use a common, stable ticker like AAPL for a lightweight check.
-        const url = `${BASE_URL}/quote?symbol=AAPL&token=${apiKey}`;
-        const response = await fetch(url);
-        if (response.status === 401) {
-            return 'invalid';
-        }
-        if (!response.ok) {
-            console.error(`Finnhub validation failed with status: ${response.status}`);
-            return 'invalid';
-        }
-        return 'valid';
-    } catch (error) {
-        console.error("Finnhub API Key validation failed:", error);
-        return 'invalid';
-    }
+    return ai;
 };
 
-export const getQuote = async (ticker: string): Promise<StockQuote> => {
-    const apiKey = getFinnhubApiKey();
-    if (!apiKey) {
-        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
+const handleApiError = (error: unknown, context: string, ticker: string): Error => {
+    console.error(`Error fetching ${context} for ${ticker}:`, error);
+    if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden'))) {
+        return new Error("The Gemini API key is invalid or missing. Please ensure it's configured correctly in your environment.");
     }
+    if (error instanceof Error && error.message.toLowerCase().includes('json')) {
+         return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
+    }
+    return new Error(`Failed to get ${context} for ${ticker} from Gemini API.`);
+};
+
+// --- Helper to clean and parse Gemini's response ---
+
+const cleanAndParseJson = (text: string): any => {
+    let jsonText = text.trim();
+    if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.substring(7, jsonText.length - 3).trim();
+    } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.substring(3, jsonText.length - 3).trim();
+    }
+    return JSON.parse(jsonText);
+}
+
+
+// --- New Data Fetching Functions using Gemini ---
+
+export const getQuote = async (ticker: string): Promise<StockQuote> => {
     try {
-        const url = `${BASE_URL}/quote?symbol=${ticker}&token=${apiKey}`;
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw handleApiError(response, ticker);
+        const client = getGenAIClient();
+        const prompt = `Using Google Search, get the latest stock quote for ticker symbol "${ticker}".
+        Return ONLY a valid JSON object with the following keys and number values:
+        - "currentPrice": The latest trading price.
+        - "change": The change in price for the day (e.g., -1.25).
+        - "percentChange": The percentage change for the day (e.g., -0.5).
+        - "previousClose": The previous trading day's closing price.
+        Do not include any other text or markdown formatting.`;
+        
+        const response = await client.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            }
+        });
+        
+        const data = cleanAndParseJson(response.text);
+        
+        if (typeof data.currentPrice !== 'number') {
+            throw new Error(`Invalid data format received for ${ticker}.`);
         }
 
-        const data = await response.json();
-        if (data.c === 0 && data.pc === 0) { // Finnhub can return 0s for invalid tickers
-            throw new Error(`No quote data found for ticker: ${ticker}. Please check the symbol.`);
-        }
+        return data as StockQuote;
 
-        return {
-            currentPrice: data.c,
-            change: data.d,
-            percentChange: data.dp,
-            previousClose: data.pc,
-        };
     } catch (error) {
-        console.error(`Error fetching quote for ${ticker}:`, error);
-        throw error;
+        throw handleApiError(error, "quote", ticker);
     }
 };
 
 export const getCompanyProfile = async (ticker: string): Promise<{ name: string }> => {
-    const apiKey = getFinnhubApiKey();
-    if (!apiKey) {
-        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
-    }
     try {
-        const url = `${BASE_URL}/stock/profile2?symbol=${ticker}&token=${apiKey}`;
-        const response = await fetch(url);
+        const client = getGenAIClient();
+        const prompt = `Using Google Search, what is the full company name for the stock ticker symbol "${ticker}"?
+        Return ONLY a valid JSON object with a single key "name" and the company name as its string value.
+        Do not include any other text or markdown formatting.`;
 
-        if (!response.ok) {
-            throw handleApiError(response, ticker);
-        }
+        const response = await client.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            }
+        });
 
-        const data = await response.json();
-        // If the API returns an empty object, the ticker is likely invalid
-        if (Object.keys(data).length === 0) {
-            throw new Error(`No company profile found for ticker: ${ticker}. Please check the symbol.`);
+        const data = cleanAndParseJson(response.text);
+        
+        if (!data.name || typeof data.name !== 'string' || data.name.trim() === '') {
+             throw new Error(`No company name found for ticker: ${ticker}. Please check the symbol.`);
         }
+        
         return data;
+
     } catch (error) {
-        console.error(`Error fetching company profile for ${ticker}:`, error);
-        throw error; // Re-throw to be caught by the component
+        throw handleApiError(error, "company profile", ticker);
     }
 };
 
-
-const transformData = (apiData: any): ChartDataPoint[] => {
-    // Finnhub signals no data with s: "no_data" or if the timestamp array 't' is missing/empty.
-    if (apiData.s === 'no_data' || !apiData.t || apiData.t.length === 0) {
+const transformAndSortData = (apiData: {date: string, price: number}[]): ChartDataPoint[] => {
+    if (!apiData || apiData.length === 0) {
         return [];
     }
 
-    const chartPoints: ChartDataPoint[] = [];
-    for (let i = 0; i < apiData.t.length; i++) {
-        const timestamp = apiData.t[i] * 1000; // Finnhub provides UNIX timestamps in seconds
-        const price = apiData.c[i];
-        const d = new Date(timestamp);
-        
-        chartPoints.push({
-            date: d.toISOString(),
-            shortDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            price,
-        });
-    }
+    const chartPoints: ChartDataPoint[] = apiData
+        .map(point => {
+            // The date from Gemini might not have a time, so specify UTC to avoid timezone issues.
+            const d = new Date(`${point.date}T00:00:00Z`);
+            return {
+                date: d.toISOString(),
+                shortDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+                price: point.price,
+            };
+        })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ensure data is chronological
 
     return chartPoints;
 };
 
-
 export const getHistoricalData = async (ticker: string, range: ChartRange): Promise<ChartDataPoint[]> => {
-    const apiKey = getFinnhubApiKey();
-    if (!apiKey) {
-        throw new Error("Finnhub API key not configured. Please set it in the configuration screen.");
-    }
-    
     try {
-        const now = new Date();
-        const to = Math.floor(now.getTime() / 1000);
-        let from: number;
-        let resolution: string;
-
+        const client = getGenAIClient();
+        
+        let rangeDescription = '';
+        let frequency = 'daily';
         switch (range) {
             case '5Y':
-                from = Math.floor(new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()).getTime() / 1000);
-                resolution = 'W'; // Weekly for 5-year view
+                rangeDescription = 'the last 5 years';
+                frequency = 'weekly';
                 break;
             case '1Y':
-                from = Math.floor(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime() / 1000);
-                resolution = 'D'; // Daily for 1-year view
+                rangeDescription = 'the last 1 year';
                 break;
             case 'YTD':
-                from = Math.floor(new Date(now.getFullYear(), 0, 1).getTime() / 1000);
-                resolution = 'D'; // Daily for YTD view
-                break;
-            default: // Default to 1Y
-                from = Math.floor(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime() / 1000);
-                resolution = 'D';
+                rangeDescription = 'this year to date';
                 break;
         }
-        
-        const url = `${BASE_URL}/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${apiKey}`;
-        
-        const response = await fetch(url);
 
-        if (!response.ok) {
-            throw handleApiError(response, ticker);
-        }
-        
-        const data = await response.json();
-        return transformData(data);
+        const prompt = `
+            Using Google Search, provide historical closing prices for the stock with ticker symbol "${ticker}" for ${rangeDescription}.
+            The data should be ${frequency}.
+            Return ONLY a valid JSON array of objects, where each object contains a 'date' (in YYYY-MM-DD format) and the 'price' (closing price as a number).
+            Ensure the data is sorted chronologically from oldest to newest.
+            Do not include any other text or markdown formatting.
+        `;
+
+        const response = await client.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            }
+        });
+
+        const data = cleanAndParseJson(response.text);
+        return transformAndSortData(data);
 
     } catch (error) {
-        console.error("Error fetching historical data from Finnhub:", error);
-        throw error; // Re-throw to be caught by the component
+        throw handleApiError(error, "historical data", ticker);
     }
 };

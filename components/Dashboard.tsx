@@ -1,23 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Holding, StockAnalysis, StockNews, StockRecommendation, AnalysisType, ChartDataPoint } from '../types';
-import { getStockAnalysis, getStockNews, getRecommendations } from '../services/geminiService';
+import { Holding, StockAnalysis, StockNews, StockRecommendation, AnalysisType, ChartDataPoint, StockFundamentals } from '../types';
+import { getStockAnalysis, getStockNews, getRecommendations, getFundamentalAnalysis } from '../services/geminiService';
 import { getHistoricalData } from '../services/marketDataService';
 import StockChart from './StockChart';
 import AnalysisResult from './AnalysisResult';
 import { BrainIcon } from './icons/BrainIcon';
 import { NewspaperIcon } from './icons/NewspaperIcon';
 import { StarIcon } from './icons/StarIcon';
+import { ClipboardDocumentListIcon } from './icons/ClipboardDocumentListIcon';
 
 export type ChartRange = '5Y' | '1Y' | 'YTD';
 
 interface DashboardProps {
   portfolio: Holding[];
   selectedTicker: string;
-  analysis: StockAnalysis | StockNews | StockRecommendation[] | null;
+  analysis: StockAnalysis | StockNews | StockRecommendation[] | StockFundamentals | null;
   analysisType: AnalysisType | null;
   isLoading: boolean;
   error: string | null;
-  setAnalysis: React.Dispatch<React.SetStateAction<StockAnalysis | StockNews | StockRecommendation[] | null>>;
+  setAnalysis: React.Dispatch<React.SetStateAction<StockAnalysis | StockNews | StockRecommendation[] | StockFundamentals | null>>;
   setAnalysisType: React.Dispatch<React.SetStateAction<AnalysisType | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -54,6 +55,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         result = await getStockNews(selectedTicker);
       } else if (type === AnalysisType.RECOMMENDATIONS) {
         result = await getRecommendations(portfolio);
+      } else if (type === AnalysisType.FUNDAMENTALS) {
+        result = await getFundamentalAnalysis(selectedTicker);
       }
       setAnalysis(result || null);
     } catch (err) {
@@ -126,6 +129,13 @@ const Dashboard: React.FC<DashboardProps> = ({
               className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${analysisType === AnalysisType.ANALYSIS ? 'bg-brand-accent text-white' : 'bg-brand-border text-brand-subtle hover:bg-brand-border/70'}`}
             >
               <BrainIcon className="w-5 h-5" /> AI Analysis
+            </button>
+            <button
+              onClick={() => handleFetchAnalysis(AnalysisType.FUNDAMENTALS)}
+              disabled={isLoading}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${analysisType === AnalysisType.FUNDAMENTALS ? 'bg-brand-accent text-white' : 'bg-brand-border text-brand-subtle hover:bg-brand-border/70'}`}
+            >
+              <ClipboardDocumentListIcon className="w-5 h-5" /> Fundamentals
             </button>
             <button
               onClick={() => handleFetchAnalysis(AnalysisType.NEWS)}

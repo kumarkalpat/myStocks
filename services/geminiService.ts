@@ -1,25 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Holding, StockAnalysis, StockNews, StockRecommendation } from '../types';
-import { ApiStatusType } from "../components/ApiStatus";
-import { getGeminiApiKey } from "./configService";
+import { Holding, StockAnalysis, StockNews, StockRecommendation, StockFundamentals } from '../types';
 
-// Use a singleton pattern to lazy-initialize the client.
-// This avoids the constructor throwing an error on module load when API_KEY is not present.
+// Use a singleton pattern to initialize the client once.
 let ai: GoogleGenAI | null = null;
-let lastUsedApiKey: string | null = null;
 
 const getGenAIClient = (): GoogleGenAI => {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-        // This error will be caught by the calling functions and translated
-        // into a user-friendly message.
-        throw new Error("Gemini API key not configured. Please add it in the configuration screen.");
-    }
-
-    // Re-initialize if the key has changed
-    if (!ai || lastUsedApiKey !== apiKey) {
-        ai = new GoogleGenAI({ apiKey });
-        lastUsedApiKey = apiKey;
+    if (!ai) {
+        // The API key must be injected by the environment.
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     }
     return ai;
 };
@@ -41,34 +29,22 @@ const formatPortfolioForPrompt = (portfolio: Holding[]): string => {
 
 const handleApiError = (error: unknown, context: string): Error => {
     console.error(`Error fetching ${context}:`, error);
-    if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400'))) {
-        return new Error("The Gemini API key is invalid. The API rejected the key. Please verify the key is correct in the configuration screen.");
+    if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden'))) {
+        return new Error("The Gemini API key is invalid or missing. Please ensure it's configured correctly in your environment.");
     }
     return new Error(`Failed to get ${context} from Gemini API.`);
 };
 
-export const validateGeminiApiKey = async (): Promise<ApiStatusType> => {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-        return 'missing';
+// Helper to clean and parse Gemini's response when not using a strict JSON schema
+const cleanAndParseJson = (text: string): any => {
+    let jsonText = text.trim();
+    if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.substring(7, jsonText.length - 3).trim();
+    } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.substring(3, jsonText.length - 3).trim();
     }
-    try {
-        const client = getGenAIClient();
-        
-        await client.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: "test",
-            config: {
-                maxOutputTokens: 5, 
-                thinkingConfig: { thinkingBudget: 0 }
-            }
-        });
-        return 'valid';
-    } catch (error) {
-        console.error("Gemini API Key validation failed:", error);
-        return 'invalid';
-    }
-};
+    return JSON.parse(jsonText);
+}
 
 
 export const getStockAnalysis = async (ticker: string, portfolio: Holding[]): Promise<StockAnalysis> => {
@@ -179,5 +155,52 @@ export const getRecommendations = async (portfolio: Holding[]): Promise<StockRec
     return JSON.parse(jsonText) as StockRecommendation[];
   } catch (error) {
     throw handleApiError(error, "recommendations");
+  }
+};
+
+export const getFundamentalAnalysis = async (ticker: string): Promise<StockFundamentals> => {
+  try {
+    const client = getGenAIClient();
+    const prompt = `
+      Using Google Search, perform a fundamental analysis for the stock with ticker symbol "${ticker}".
+      Provide the latest available values for the following Key Performance Indicators (KPIs).
+      
+      Return ONLY a valid JSON object with the following structure and keys. All values should be numbers.
+      If a value is not available, use null.
+
+      {
+        "ticker": "${ticker}",
+        "summary": "A brief, one to two-sentence summary of the company's fundamental health based on these metrics.",
+        "profitability": {
+          "eps": "Earnings Per Share (TTM)",
+          "netProfitMargin": "Net Profit Margin (TTM) as a percentage",
+          "ebitdaMargin": "EBITDA Margin (TTM) as a percentage"
+        },
+        "valuation": {
+          "peRatio": "Price-to-Earnings Ratio (TTM)",
+          "pegRatio": "PEG Ratio (TTM)",
+          "pbRatio": "Price-to-Book Ratio (latest quarter)"
+        },
+        "financialHealth": {
+          "debtToEquityRatio": "Total Debt to Equity Ratio (latest quarter)",
+          "currentRatio": "Current Ratio (latest quarter)"
+        }
+      }
+
+      Do not include any other text, explanations, or markdown formatting.
+    `;
+
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      }
+    });
+    
+    const data = cleanAndParseJson(response.text);
+    return data as StockFundamentals;
+  } catch (error) {
+    throw handleApiError(error, "fundamental analysis");
   }
 };
