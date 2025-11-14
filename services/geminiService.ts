@@ -1,17 +1,30 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Holding, StockAnalysis, StockNews, StockRecommendation, StockFundamentals } from '../types';
-
-// Use a singleton pattern to initialize the client once.
-let ai: GoogleGenAI | null = null;
+import { getGeminiApiKey } from './configService';
 
 const getGenAIClient = (): GoogleGenAI => {
-    if (!ai) {
-        // The API key must be injected by the environment.
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Prioritize environment variable, fall back to localStorage.
+    const apiKey = process.env.API_KEY || getGeminiApiKey();
+    if (!apiKey) {
+        throw new Error("API Key not found. Please configure it.");
     }
-    return ai;
+    return new GoogleGenAI({ apiKey });
 };
 
+export const validateGeminiApiKey = async (apiKey: string): Promise<boolean> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        // A very simple, low-cost request to validate the key's authenticity.
+        await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: "hello",
+        });
+        return true;
+    } catch (error) {
+        console.error("Gemini API key validation failed:", error);
+        return false;
+    }
+};
 
 const formatPortfolioForPrompt = (portfolio: Holding[]): string => {
   if (portfolio.length === 0) return "The user has an empty portfolio.";
@@ -29,8 +42,10 @@ const formatPortfolioForPrompt = (portfolio: Holding[]): string => {
 
 const handleApiError = (error: unknown, context: string): Error => {
     console.error(`Error fetching ${context}:`, error);
-    if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden'))) {
-        return new Error("The Gemini API key is invalid or missing. Please ensure it's configured correctly in your environment.");
+    if (error instanceof Error) {
+        if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
+             return new Error("The Gemini API key is invalid or missing. If you've set it in the environment, please verify it. Otherwise, please re-configure it through the app.");
+        }
     }
     return new Error(`Failed to get ${context} from Gemini API.`);
 };

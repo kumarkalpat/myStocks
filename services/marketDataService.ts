@@ -1,26 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { ChartDataPoint, StockQuote } from '../types';
 import { ChartRange } from '../components/Dashboard';
+import { getGeminiApiKey } from './configService';
 
 // --- Gemini Client Setup ---
 
-let ai: GoogleGenAI | null = null;
-
 const getGenAIClient = (): GoogleGenAI => {
-    if (!ai) {
-        // The API key must be injected by the environment.
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Prioritize environment variable, fall back to localStorage.
+    const apiKey = process.env.API_KEY || getGeminiApiKey();
+    if (!apiKey) {
+        throw new Error("API Key not found. Please configure it.");
     }
-    return ai;
+    return new GoogleGenAI({ apiKey });
 };
 
 const handleApiError = (error: unknown, context: string, ticker: string): Error => {
     console.error(`Error fetching ${context} for ${ticker}:`, error);
-    if (error instanceof Error && (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden'))) {
-        return new Error("The Gemini API key is invalid or missing. Please ensure it's configured correctly in your environment.");
-    }
-    if (error instanceof Error && error.message.toLowerCase().includes('json')) {
-         return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
+    if (error instanceof Error) {
+        if (error.message.includes('API key') || error.message.includes('400') || error.message.includes('Forbidden') || error.message.includes('API Key not found')) {
+            return new Error("The Gemini API key is invalid or missing. If you've set it in the environment, please verify it. Otherwise, please re-configure it through the app.");
+        }
+        if (error.message.toLowerCase().includes('json')) {
+            return new Error(`Gemini returned an invalid format for ${ticker}. The stock ticker might be incorrect or delisted.`);
+        }
     }
     return new Error(`Failed to get ${context} for ${ticker} from Gemini API.`);
 };
